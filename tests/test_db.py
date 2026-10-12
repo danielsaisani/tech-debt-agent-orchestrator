@@ -1,3 +1,5 @@
+import sqlite3
+
 import pytest
 
 from app import db
@@ -106,3 +108,24 @@ def test_runs_survive_closing_and_reopening_the_database(tmp_path):
     reopened.close()
     assert stored["status"] == "running"
     assert stored["devin_session_id"] == "sess1"
+
+
+def test_columns_added_later_are_added_to_an_existing_database(tmp_path):
+    """A database created before `comment_error` existed keeps its runs and gains the column."""
+    path = str(tmp_path / "runs.db")
+    old = sqlite3.connect(path)
+    old.executescript(db.SCHEMA.replace("    comment_error TEXT,\n", ""))
+    old.execute(
+        "INSERT INTO runs (repo, issue_number, issue_title, issue_url, trigger, status,"
+        " created_at) VALUES (?, 7, 'Old run', 'u', 'webhook', 'succeeded', ?)",
+        (REPO, db.utcnow()),
+    )
+    old.commit()
+    assert "comment_error" not in {row[1] for row in old.execute("PRAGMA table_info(runs)")}
+    old.close()
+
+    conn = db.connect(path)
+    run = db.list_runs(conn)[0]
+    assert (run["issue_title"], run["status"], run["comment_error"]) == ("Old run", "succeeded", None)
+    assert db.update_run(conn, run["id"], comment_error="boom")["comment_error"] == "boom"
+    conn.close()

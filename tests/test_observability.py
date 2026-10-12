@@ -65,6 +65,7 @@ async def test_metrics_with_no_runs(client):
     assert metrics["acus_per_succeeded_run"] is None
     assert metrics["failure_reasons"] == {}
     assert metrics["simulated"] is False
+    assert metrics["comment_failures"] == 0
 
 
 async def test_outcome_metrics_with_mixed_outcomes(client, conn):
@@ -138,6 +139,15 @@ async def test_failure_breakdown(client, conn):
     assert metrics["failure_reasons"] == {"no_pr": 2, "needs_input": 1, "timed_out": 1}
 
 
+async def test_comment_failures_are_counted(client, conn):
+    insert_run(conn, status="succeeded", comment_error="GitHub returned 403")
+    insert_run(conn, status="running", comment_error="GitHub returned 403")
+    insert_run(conn, status="succeeded")
+
+    metrics = (await client.get("/api/metrics")).json()
+    assert metrics["comment_failures"] == 2
+
+
 # --- Run list and detail ---
 
 
@@ -204,4 +214,5 @@ async def test_dashboard_is_a_self_contained_page(client):
     assert "<script src" not in page
     assert "<link" not in page
     assert "@import" not in page
+    assert 'id="comment-failures"' in page  # hidden unless metrics report failures
     assert 'id="simulated"' in page  # the simulation notice, hidden unless metrics say so

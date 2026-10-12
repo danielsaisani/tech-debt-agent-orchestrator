@@ -218,7 +218,12 @@ class Worker:
             log.warning("run %s: Slack notification failed: %s", run["id"], exc)
 
     async def _comment(self, run: dict, body: str) -> None:
+        """Post a progress comment. A failure is recorded on the run, never raised:
+        `comment_error` holds the error from the latest attempt, or None if it worked."""
         try:
             await self._github.create_comment(run["repo"], run["issue_number"], body)
         except Exception as exc:
             log.warning("run %s: could not comment on the issue: %s", run["id"], exc)
+            db.update_run(self._conn, run["id"], comment_error=str(exc)[:500])
+        else:
+            db.update_run(self._conn, run["id"], comment_error=None)

@@ -49,5 +49,7 @@ def compute_metrics(conn: sqlite3.Connection) -> dict:
                 if run["status"] != "succeeded"
             )
         ),
+        # Runs whose latest issue comment could not be posted (usually a token problem).
+        "comment_failures": sum(1 for run in runs if run["comment_error"]),
         "generated_at": db.utcnow(),
     }

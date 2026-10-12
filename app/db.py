@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS runs (
     pr_state TEXT,
     acus_consumed REAL,
     idle_polls INTEGER NOT NULL DEFAULT 0,
+    comment_error TEXT,
     created_at TEXT NOT NULL,
     session_started_at TEXT,
     pr_opened_at TEXT,
@@ -41,10 +42,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS one_active_run_per_issue
     WHERE status IN ('queued', 'running');
 """
 
+# Columns added after the first release. They are added to an existing database
+# on startup so stored runs are kept.
+_ADDED_COLUMNS = {"comment_error": "TEXT"}
+
 _UPDATABLE = {
     "status", "failure_reason", "error_detail", "devin_session_id",
     "devin_session_url", "devin_status", "devin_status_detail", "pr_url",
-    "pr_state", "acus_consumed", "idle_polls", "session_started_at",
+    "pr_state", "acus_consumed", "idle_polls", "comment_error", "session_started_at",
     "pr_opened_at", "finished_at", "last_polled_at",
 }
 
@@ -68,6 +73,10 @@ def connect(path: str) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(SCHEMA)
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(runs)")}
+    for name, definition in _ADDED_COLUMNS.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE runs ADD COLUMN {name} {definition}")
     return conn
 
 

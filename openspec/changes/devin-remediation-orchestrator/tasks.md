@@ -84,6 +84,13 @@
 - [x] 11.1 Implement `scripts/send_webhook.py` using only the standard library, and verify by test that its payload and signature are accepted by the webhook route and that `--scenario` adds the marker
 - [x] 11.2 Document the script in `README.md`, and verify the documented commands create runs against a container in simulation mode
 
+## 12. Visible comment failures
+
+- [x] 12.1 Add the `comment_error` column, added to existing databases at startup, and verify by test that a database created without it keeps its runs and gains the column
+- [x] 12.2 Record the result of each comment attempt on the run, and verify tests for a failure recorded, cleared by a later success, and absent when comments work
+- [x] 12.3 Report `comment_failures` in `GET /api/metrics` and show a notice and per-run marker on the dashboard, and verify by test and in a browser
+- [x] 12.4 Document the GitHub token permissions and how comment failures surface in `README.md` and `.env.example`, and verify the documented commands run as written
+
 ## Workflow follow-up
 
 - Archive the change once the end-to-end checks pass, so the three specs become the main specs.

@@ -29,7 +29,7 @@ Constraints that shape the approach:
 - Tracking a pull request after the run finishes (review, merge, revert). Merge rate is the natural next leader metric but needs `pull_request` webhooks or continued polling.
 - Periodic scanning of GitHub. The sweep runs at startup and on request only; the webhook stays the primary trigger.
 - Replying to a session that is waiting for input. That outcome is recorded as `needs_input`.
-- Schema migrations. The schema is created on startup; a schema change during development means deleting the volume.
+- A migration framework. The schema is created on startup, and columns added after the first release are added to an existing database with `ALTER TABLE ... ADD COLUMN` at startup, so stored runs are kept. Any other schema change means deleting the volume.
 
 ## Decisions
 
@@ -58,6 +58,7 @@ runs(
   devin_status TEXT, devin_status_detail TEXT,
   pr_url TEXT, pr_state TEXT, acus_consumed REAL,
   idle_polls INTEGER DEFAULT 0,
+  comment_error TEXT,           -- error from the latest issue comment attempt, or NULL
   created_at TEXT, session_started_at TEXT, pr_opened_at TEXT,
   finished_at TEXT, last_polled_at TEXT
 )
@@ -172,6 +173,14 @@ With `DEVIN_SIMULATE=true`, `create_app` injects `SimulatedDevin` and `Simulated
 ### 13. Webhook replay script
 
 `scripts/send_webhook.py` builds an `issues` payload, signs it with the webhook secret and posts it to a local instance. It uses only the standard library so it runs without the virtualenv, takes the secret and repository from the environment or `.env`, and has a `--scenario` flag that adds the simulation marker to the title. Together with simulation mode this tests the webhook path with no ngrok, no GitHub and no new issues. For replaying a real delivery, GitHub's own "Redeliver" button is the tool.
+
+### 14. Comment failures are recorded on the run and surfaced
+
+A failed comment must not change a run's outcome (decision 7), which made a misconfigured token invisible: runs succeeded and nothing appeared on the issues, with only a log line to show for it. Each comment attempt now writes its result to `runs.comment_error`: the error text on failure, `NULL` on success. `/api/metrics` counts runs with a value, and the dashboard shows a notice naming the usual cause (a token without *Issues: Read and write*) and marks the affected rows.
+
+- *Why "latest attempt" and not a failure count:* the question a reader has is "are comments working now?". Fixing the token mid-run clears the flag on the run's next comment.
+- *Why not fail fast at startup with a permission check:* GitHub has no side-effect-free way to prove write access for a fine-grained token, and a comment problem should not stop runs from being processed.
+- Runs that finished before this column existed keep `NULL`, so earlier failures are not shown retroactively.
 
 ## Risks / Trade-offs
 

@@ -121,8 +121,61 @@ To replay a delivery GitHub actually sent, use *Redeliver* under the webhook's
 2. **Enable Issues on the fork.** Forks have Issues turned off by default:
    *Settings → General → Features → Issues*.
 3. Create a label named `tech-debt` on the fork.
-4. Create a token that can read and write Issues on the fork (a fine-grained personal access
-   token with *Issues: Read and write* on that repository) and put it into `GITHUB_TOKEN`.
+4. Create a token for the service and put it into `GITHUB_TOKEN`. It needs
+   **Issues: Read and write** on the fork; see [GitHub token permissions](#github-token-permissions).
+
+### GitHub token permissions
+
+The service makes three kinds of GitHub API call, all on the fork, and all covered by one
+permission:
+
+| What the service does | API call | Permission needed |
+|---|---|---|
+| Reads an issue for the manual trigger | `GET /repos/{repo}/issues/{number}` | Issues: Read |
+| Lists labeled issues for the sweep | `GET /repos/{repo}/issues` | Issues: Read |
+| Comments the session link, pull request or failure | `POST /repos/{repo}/issues/{number}/comments` | Issues: **Write** |
+
+**Recommended: a fine-grained personal access token**
+(*GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens*):
+
+- **Resource owner:** the account that owns the fork.
+- **Repository access:** *Only select repositories* → your fork.
+- **Repository permissions:** **Issues → Read and write**. GitHub adds *Metadata → Read-only*
+  automatically. Nothing else is needed.
+
+A classic token also works: use the `public_repo` scope if the fork is public, or `repo` if
+it is private. Both grant far more than the service needs, so prefer the fine-grained token.
+
+What the token does **not** need:
+
+- *Contents* or *Pull requests*. The service never pushes code or opens pull requests; Devin
+  does that through its own GitHub integration, which is set up separately in Devin.
+- *Webhooks*. You add the webhook by hand in the fork's settings. The service only receives
+  deliveries, and those are verified with `GITHUB_WEBHOOK_SECRET`, not the token.
+
+**If the token is read-only, runs still work but nothing appears on the issue.** A failed
+comment never changes a run's outcome. Instead the dashboard shows a "GitHub comments are
+failing" notice and marks each affected run, `/api/metrics` reports `comment_failures`, and
+the run's `comment_error` field holds the error GitHub returned. The same error is in the
+service logs:
+
+```bash
+docker compose logs | grep "could not comment"
+```
+
+A `403` there (`Resource not accessible by personal access token`) means *Issues* is set to
+read-only, or the token was not granted access to the fork. Edit the token's permissions on
+GitHub; the token value stays the same, so no restart is needed. The notice clears for a
+run as soon as its next comment is posted. Runs that already finished keep their marker.
+
+To check that the token can at least read the fork's issues (replace `OWNER`):
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/OWNER/superset/issues?per_page=1
+```
+
+`200` means read access works. Write access can only be proven by a comment actually
+appearing, so check the issue after your first run.
 
 ### Webhook (optional: the manual trigger works without it)
 
@@ -147,7 +200,7 @@ GitHub sends a `ping` on creation; the service acknowledges it and ignores it.
 |---|---|---|---|
 | `DEVIN_API_KEY` | yes | | Devin service user key |
 | `DEVIN_ORG_ID` | yes | | Devin organization id |
-| `GITHUB_TOKEN` | yes | | Reads issues and writes comments on the fork |
+| `GITHUB_TOKEN` | yes | | Reads issues and writes comments on the fork; needs *Issues: Read and write* |
 | `GITHUB_WEBHOOK_SECRET` | yes | | Verifies webhook signatures |
 | `TARGET_REPO` | yes | | The fork, as `owner/name` |
 | `TRIGGER_LABEL` | no | `tech-debt` | Label that starts a run |
@@ -265,6 +318,7 @@ run, and 404 if the issue does not exist on the target repository.
 | `total_acus` | ACUs consumed across all runs, as reported by Devin |
 | `acus_per_succeeded_run` | `total_acus` ÷ succeeded runs: what a pull request costs, failures included |
 | `failure_reasons` | Unsuccessful runs grouped by reason; timeouts appear as `timed_out` |
+| `comment_failures` | Runs whose latest issue comment could not be posted; above zero usually means a token problem |
 | `simulated` | `true` when the service is in simulation mode |
 
 Time to pull request is measured to the nearest poll, so it is accurate to within

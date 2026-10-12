@@ -81,6 +81,21 @@ A failure to post an issue comment MUST NOT change the status or outcome of the 
 - **WHEN** GitHub returns an error while the service posts a progress comment
 - **THEN** the run keeps its status and continues its lifecycle, and the error is recorded in the service logs
 
+### Requirement: Comment failures are recorded
+Each run SHALL record the error from its most recent attempt to post an issue comment, and MUST clear that record when a later comment for the same run is posted successfully.
+
+#### Scenario: Token cannot write comments
+- **WHEN** GitHub rejects a progress comment for a run
+- **THEN** the run's `comment_error` holds the error returned by GitHub
+
+#### Scenario: Problem fixed during a run
+- **WHEN** a run's first comment failed and a later comment for the same run is posted successfully
+- **THEN** the run's `comment_error` is empty
+
+#### Scenario: Comments working
+- **WHEN** every comment for a run is posted successfully
+- **THEN** the run's `comment_error` is empty
+
 ### Requirement: Manual trigger
 The service SHALL expose `POST /api/runs/trigger`, accepting an issue number on the target repository, which requests a remediation run through the same lifecycle as a webhook without requiring a webhook delivery or the trigger label. Runs MUST record whether they were triggered by webhook or manually.
 

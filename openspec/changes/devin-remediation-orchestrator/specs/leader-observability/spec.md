@@ -104,3 +104,14 @@ The service SHALL serve a single HTML page at `GET /` that shows the headline me
 #### Scenario: Dashboard in normal mode
 - **WHEN** a leader opens the dashboard while simulation mode is off
 - **THEN** no simulation notice is shown and the metrics report `simulated` as false
+
+### Requirement: Comment failures are visible
+`GET /api/metrics` SHALL report the number of runs whose most recent issue comment could not be posted, and while that number is above zero the dashboard MUST show a notice naming the likely cause and mark each affected run.
+
+#### Scenario: Token without write access
+- **WHEN** a leader opens the dashboard and two runs have a recorded comment error
+- **THEN** the metrics report 2 comment failures, the page shows a notice that GitHub comments are failing, and both runs are marked in the table
+
+#### Scenario: Comments working
+- **WHEN** no run has a recorded comment error
+- **THEN** the metrics report 0 comment failures and no notice is shown

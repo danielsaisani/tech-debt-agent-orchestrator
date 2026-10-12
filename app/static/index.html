@@ -72,6 +72,7 @@
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .status { display: inline-flex; align-items: center; gap: 6px; }
   .reason { color: var(--text-muted); }
+  .comment-failed { color: var(--text-secondary); font-size: 12px; margin-top: 2px; }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
   .links a + a { margin-left: 12px; }
@@ -100,6 +101,13 @@
   <div class="notice" id="simulated" role="status" hidden>
     <strong>Simulation mode.</strong> These runs and metrics are simulated: no Devin session
     was started and no pull request exists.
+  </div>
+
+  <div class="notice" id="comment-failures" role="status" hidden>
+    <strong>GitHub comments are failing.</strong>
+    <span id="comment-failures-text"></span>
+    Runs are unaffected, but nothing is being posted on the issues. Check that
+    <code>GITHUB_TOKEN</code> has <em>Issues: Read and write</em> on the target repository.
   </div>
 
   <section class="tiles" aria-label="Headline metrics">
@@ -211,6 +219,10 @@
 
   function renderMetrics(m) {
     $("simulated").hidden = !m.simulated;
+    $("comment-failures").hidden = !m.comment_failures;
+    $("comment-failures-text").textContent = m.comment_failures === 1
+      ? "The latest comment for 1 run could not be posted."
+      : "The latest comment for " + m.comment_failures + " runs could not be posted.";
     const finished = m.by_status.succeeded + m.by_status.failed + m.by_status.timed_out;
     $("success-rate").textContent =
       m.success_rate == null ? "–" : Math.round(m.success_rate * 100) + "%";
@@ -252,8 +264,18 @@
       }
       const links = [link(run.devin_session_url, "Session"), link(run.pr_url, "Pull request")]
         .filter(Boolean);
+      const issueCell = el("td", { className: "issue" }, [
+        link(run.issue_url, issueText) || issueText,
+      ]);
+      if (run.comment_error) {
+        issueCell.append(el("div", {
+          className: "comment-failed",
+          textContent: "⚠ Comment not posted to the issue",
+          title: run.comment_error,
+        }));
+      }
       return el("tr", {}, [
-        el("td", { className: "issue" }, [link(run.issue_url, issueText) || issueText]),
+        issueCell,
         el("td", {}, [status]),
         el("td", { textContent: run.trigger }),
         el("td", { textContent: new Date(run.created_at).toLocaleString() }),

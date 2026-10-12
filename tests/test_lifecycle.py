@@ -199,6 +199,43 @@ async def test_github_comment_failure_leaves_the_run_unchanged(conn, worker, dev
     assert (run["status"], run["pr_url"]) == ("succeeded", PR)
 
 
+async def test_comment_failure_is_recorded_on_the_run(conn, worker, devin, github):
+    github.comment_error = GitHubError("GitHub returned 403: Resource not accessible")
+    run = queue_run(conn)
+    await worker.run_cycle()
+
+    run = db.get_run(conn, run["id"])
+    assert run["status"] == "running"
+    assert "403" in run["comment_error"]
+
+    devin.session = session_payload("exit", "finished", PR)
+    await worker.run_cycle()
+    run = db.get_run(conn, run["id"])
+    assert run["status"] == "succeeded"
+    assert "403" in run["comment_error"]
+
+
+async def test_comment_error_is_cleared_when_a_later_comment_succeeds(conn, worker, devin, github):
+    github.comment_error = GitHubError("GitHub returned 403")
+    run = queue_run(conn)
+    await worker.run_cycle()
+    assert db.get_run(conn, run["id"])["comment_error"]
+
+    github.comment_error = None  # the token was fixed mid-run
+    devin.session = session_payload("exit", "finished", PR)
+    await worker.run_cycle()
+
+    run = db.get_run(conn, run["id"])
+    assert run["status"] == "succeeded"
+    assert run["comment_error"] is None
+    assert len(github.comments) == 1
+
+
+async def test_successful_comments_leave_no_comment_error(conn, worker, devin):
+    run = await running_run(conn, worker)
+    assert db.get_run(conn, run["id"])["comment_error"] is None
+
+
 async def test_notifier_is_called_once_with_the_final_run(conn, worker, devin, notifier):
     run = await running_run(conn, worker)
     assert notifier.finished == []
