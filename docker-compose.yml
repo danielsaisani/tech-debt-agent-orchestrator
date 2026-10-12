@@ -1,0 +1,20 @@
+services:
+  remediation-orchestrator:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_PATH: /data/runs.db
+      # Passed through so simulation mode works from the shell without a .env:
+      #   DEVIN_SIMULATE=true POLL_INTERVAL_SECONDS=2 docker compose up --build
+      DEVIN_SIMULATE: ${DEVIN_SIMULATE:-false}
+      POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-30}
+    ports:
+      - "8000:8000"
+    volumes:
+      - runs-data:/data
+    restart: unless-stopped
+
+volumes:
+  runs-data:

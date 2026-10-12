@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>remediation-orchestrator</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f4f4f2;
+    --surface: #fcfcfb;
+    --border: #e3e2dd;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #7a7972;
+    --accent: #2a78d6;
+    --good: #0ca30c;
+    --warning: #fab219;
+    --serious: #ec835a;
+    --critical: #d03b3b;
+    --neutral: #a09f97;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page: #111110;
+      --surface: #1a1a19;
+      --border: #2e2e2b;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted: #8f8e85;
+      --accent: #3987e5;
+      --neutral: #6f6e67;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--text-primary);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-bottom: 20px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0; }
+  h2 { font-size: 14px; font-weight: 600; margin: 0 0 12px; }
+  .subtitle { color: var(--text-secondary); }
+  .updated { margin-left: auto; color: var(--text-muted); font-size: 12px; }
+  .updated.stale { color: var(--critical); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .tiles { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .tile .label { color: var(--text-secondary); }
+  .tile .value { font-size: 28px; font-weight: 600; line-height: 1.2; margin-top: 4px; }
+  .tile.hero .value { font-size: 52px; line-height: 1.1; }
+  .tile .note { color: var(--text-muted); font-size: 12px; margin-top: 4px; }
+  .breakdown { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .counts { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 0; padding: 0; list-style: none; }
+  .counts li { display: flex; align-items: center; gap: 6px; }
+  .counts .n { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .none { color: var(--text-muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--neutral); flex: none; }
+  .dot.succeeded { background: var(--good); }
+  .dot.running { background: var(--accent); }
+  .dot.failed { background: var(--critical); }
+  .dot.timed_out { background: var(--serious); }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--text-secondary); font-weight: 500; font-size: 12px; }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.issue { white-space: normal; min-width: 220px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .status { display: inline-flex; align-items: center; gap: 6px; }
+  .reason { color: var(--text-muted); }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .links a + a { margin-left: 12px; }
+  .notice { border: 1px solid var(--warning); border-radius: 8px; padding: 10px 16px;
+            margin-bottom: 12px; background: var(--surface); }
+  .empty { color: var(--text-secondary); padding: 8px 0; }
+  code { font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--page);
+         border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+  pre { margin: 8px 0 0; overflow-x: auto; }
+  pre code { display: inline-block; padding: 8px 10px; }
+  @media (max-width: 760px) {
+    .tiles { grid-template-columns: 1fr 1fr; }
+    .tile.hero { grid-column: 1 / -1; }
+    .breakdown { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>remediation-orchestrator</h1>
+    <span class="subtitle">Is Devin working? Tech-debt issues in, pull requests out.</span>
+    <span class="updated" id="updated">Loading…</span>
+  </header>
+
+  <div class="notice" id="simulated" role="status" hidden>
+    <strong>Simulation mode.</strong> These runs and metrics are simulated: no Devin session
+    was started and no pull request exists.
+  </div>
+
+  <section class="tiles" aria-label="Headline metrics">
+    <div class="card tile hero">
+      <div class="label">Success rate</div>
+      <div class="value" id="success-rate">–</div>
+      <div class="note" id="success-note">Finished runs that produced a pull request</div>
+    </div>
+    <div class="card tile">
+      <div class="label">Active runs</div>
+      <div class="value" id="active-runs">–</div>
+      <div class="note">Queued or with Devin now</div>
+    </div>
+    <div class="card tile">
+      <div class="label">Median time to pull request</div>
+      <div class="value" id="time-to-pr">–</div>
+      <div class="note">Issue triggered to pull request seen</div>
+    </div>
+    <div class="card tile">
+      <div class="label">ACUs per pull request</div>
+      <div class="value" id="acus-per-pr">–</div>
+      <div class="note" id="acus-note">Total ACUs ÷ succeeded runs</div>
+    </div>
+  </section>
+
+  <section class="breakdown">
+    <div class="card">
+      <h2>Runs by status</h2>
+      <ul class="counts" id="status-counts"></ul>
+    </div>
+    <div class="card">
+      <h2>Why runs did not produce a pull request</h2>
+      <ul class="counts" id="failure-reasons"></ul>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Recent runs</h2>
+    <div class="empty" id="empty" hidden>
+      No runs yet. Add the <code>tech-debt</code> label to an issue on the target repository,
+      or trigger one by hand:
+      <pre><code>curl -X POST http://localhost:8000/api/runs/trigger -H 'Content-Type: application/json' -d '{"issue_number": 1}'</code></pre>
+    </div>
+    <div class="table-wrap" id="table-wrap" hidden>
+      <table>
+        <thead>
+          <tr>
+            <th>Issue</th><th>Status</th><th>Trigger</th><th>Started (local)</th>
+            <th class="num">Time to PR</th><th class="num">Duration</th><th class="num">ACUs</th>
+            <th>Links</th>
+          </tr>
+        </thead>
+        <tbody id="runs"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+  const REFRESH_MS = 10000;
+  const STATUS_LABELS = {
+    queued: "Queued", running: "Running", succeeded: "Succeeded",
+    failed: "Failed", timed_out: "Timed out",
+  };
+  const REASON_LABELS = {
+    no_pr: "Finished without a pull request",
+    needs_input: "Devin needed a human",
+    usage_limit: "Usage or billing limit",
+    session_error: "Session error",
+    session_create_failed: "Session could not start",
+    timed_out: "Timed out",
+  };
+  const $ = (id) => document.getElementById(id);
+
+  // All text reaches the page through textContent, so issue titles cannot inject markup.
+  function el(tag, props = {}, children = []) {
+    const node = Object.assign(document.createElement(tag), props);
+    node.append(...children);
+    return node;
+  }
+
+  function link(url, text) {
+    if (!url || !/^https?:\/\//.test(url)) return null;
+    return el("a", { href: url, textContent: text, target: "_blank", rel: "noopener noreferrer" });
+  }
+
+  function duration(seconds) {
+    if (seconds == null) return "–";
+    if (seconds < 60) return Math.round(seconds) + "s";
+    const minutes = Math.round(seconds / 60);
+    return minutes < 60 ? minutes + "m" : Math.floor(minutes / 60) + "h " + (minutes % 60) + "m";
+  }
+
+  function secondsBetween(start, end) {
+    return start && end ? (new Date(end) - new Date(start)) / 1000 : null;
+  }
+
+  function number(value) {
+    return value == null ? "–" : (Math.round(value * 10) / 10).toLocaleString();
+  }
+
+  function countItem(dotClass, label, count) {
+    return el("li", {}, [
+      el("span", { className: "dot " + dotClass }),
+      el("span", { textContent: label }),
+      el("span", { className: "n", textContent: count }),
+    ]);
+  }
+
+  function renderMetrics(m) {
+    $("simulated").hidden = !m.simulated;
+    const finished = m.by_status.succeeded + m.by_status.failed + m.by_status.timed_out;
+    $("success-rate").textContent =
+      m.success_rate == null ? "–" : Math.round(m.success_rate * 100) + "%";
+    $("success-note").textContent = finished
+      ? m.by_status.succeeded + " of " + finished + " finished runs produced a pull request"
+      : "No run has finished yet";
+    $("active-runs").textContent = m.active_runs;
+    $("time-to-pr").textContent = duration(m.median_time_to_pr_seconds);
+    $("acus-per-pr").textContent = number(m.acus_per_succeeded_run);
+    $("acus-note").textContent = number(m.total_acus) + " ACUs used in total";
+
+    $("status-counts").replaceChildren(
+      ...Object.keys(STATUS_LABELS).map((s) => countItem(s, STATUS_LABELS[s], m.by_status[s]))
+    );
+    const reasons = Object.entries(m.failure_reasons).sort((a, b) => b[1] - a[1]);
+    $("failure-reasons").replaceChildren(
+      ...(reasons.length
+        ? reasons.map(([reason, count]) =>
+            countItem(reason === "timed_out" ? "timed_out" : "failed",
+                      REASON_LABELS[reason] || reason, count))
+        : [el("li", { className: "none", textContent: "Nothing has failed." })])
+    );
+  }
+
+  function renderRuns(runs) {
+    $("empty").hidden = runs.length > 0;
+    $("table-wrap").hidden = runs.length === 0;
+    $("runs").replaceChildren(...runs.map((run) => {
+      const issueText = "#" + run.issue_number + " " + run.issue_title;
+      const status = el("span", { className: "status" }, [
+        el("span", { className: "dot " + run.status }),
+        el("span", { textContent: STATUS_LABELS[run.status] || run.status }),
+      ]);
+      if (run.status === "failed" && run.failure_reason) {
+        status.append(el("span", {
+          className: "reason",
+          textContent: "· " + (REASON_LABELS[run.failure_reason] || run.failure_reason),
+        }));
+      }
+      const links = [link(run.devin_session_url, "Session"), link(run.pr_url, "Pull request")]
+        .filter(Boolean);
+      return el("tr", {}, [
+        el("td", { className: "issue" }, [link(run.issue_url, issueText) || issueText]),
+        el("td", {}, [status]),
+        el("td", { textContent: run.trigger }),
+        el("td", { textContent: new Date(run.created_at).toLocaleString() }),
+        el("td", { className: "num",
+                   textContent: duration(secondsBetween(run.created_at, run.pr_opened_at)) }),
+        el("td", { className: "num",
+                   textContent: duration(secondsBetween(run.created_at, run.finished_at)) }),
+        el("td", { className: "num", textContent: number(run.acus_consumed) }),
+        el("td", { className: "links" }, links.length ? links : ["–"]),
+      ]);
+    }));
+  }
+
+  async function getJson(path) {
+    const response = await fetch(path);
+    if (!response.ok) throw new Error(path + " returned " + response.status);
+    return response.json();
+  }
+
+  async function refresh() {
+    const updated = $("updated");
+    try {
+      const [metrics, runs] = await Promise.all([getJson("/api/metrics"), getJson("/api/runs")]);
+      renderMetrics(metrics);
+      renderRuns(runs);
+      updated.textContent = "Updated " + new Date().toLocaleTimeString();
+      updated.classList.remove("stale");
+    } catch (error) {
+      updated.textContent = "Could not refresh; retrying. " + error.message;
+      updated.classList.add("stale");
+    }
+  }
+
+  refresh();
+  setInterval(refresh, REFRESH_MS);
+</script>
+</body>
+</html>
