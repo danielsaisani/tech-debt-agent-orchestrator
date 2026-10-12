@@ -4,3 +4,4 @@ Hello hello! I've made this logbook to hopefully answer any questions that arise
 - Needs to expose some sort of endpoint to provide statistics on the runs for each issue (1 issue may have many runs..)
     - MCP endpoint for a local LLM to query statistics (not MVP)
 - Technically, this could all be made possible with a slack message to Devin with the issue number, but that makes centralised statistics, self-governance and ownership more difficult.
+- Let's use a hardcoded Devin client so that Devin is the default option for running runs (although in theory any agent could satisfy an abstraction of what Devin provides.)
